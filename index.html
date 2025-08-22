@@ -7,13 +7,15 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Image Compressor</h1>
-    <p>Select images to compress and add to a zip file.</p>
-    <input type="file" id="imageInput" multiple accept="image/*">
+    <h1>Image & Video Compressor</h1>
+    <p>Select images and videos to compress and add to a zip file.</p>
+    <input type="file" id="imageInput" multiple accept="image/*,video/*">
     <div id="preview"></div>
     <button id="compressBtn" disabled>Compress and Add to Zip</button>
     <a id="downloadLink" style="display: none;">Download Zip</a>
 
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.6/dist/umd/ffmpeg.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.2/dist/browser-image-compression.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="script.js"></script>

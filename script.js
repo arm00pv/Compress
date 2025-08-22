@@ -13,12 +13,27 @@ imageInput.addEventListener('change', (e) => {
         reader.onload = (e) => {
             const div = document.createElement('div');
             div.classList.add('preview-item');
-            const img = document.createElement('img');
-            img.src = e.target.result;
+
+            let mediaElement;
+            if (file.type.startsWith('image/')) {
+                mediaElement = document.createElement('img');
+            } else if (file.type.startsWith('video/')) {
+                mediaElement = document.createElement('video');
+                mediaElement.controls = true;
+            }
+            mediaElement.src = e.target.result;
+
             const p = document.createElement('p');
-            p.textContent = `${(file.size / 1024).toFixed(2)} KB`;
-            div.appendChild(img);
+            p.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+
+            const progress = document.createElement('progress');
+            progress.value = 0;
+            progress.max = 100;
+            progress.style.display = 'none';
+
+            div.appendChild(mediaElement);
             div.appendChild(p);
+            div.appendChild(progress);
             preview.appendChild(div);
         };
         reader.readAsDataURL(file);
@@ -33,26 +48,46 @@ compressBtn.addEventListener('click', async () => {
     compressBtn.textContent = 'Compressing...';
 
     const zip = new JSZip();
-    const compressedImages = [];
+    let compressedFileCount = 0;
 
-    for (const [i, file] of selectedFiles.entries()) {
-        const compressedFile = await compressImage(file);
-        const compressedFileName = file.name.substring(0, file.name.lastIndexOf('.')) + '.jpg';
-        zip.file(compressedFileName, compressedFile);
-        compressedImages.push(compressedFile);
-
-        // Update UI
+    const compressionPromises = selectedFiles.map(async (file, i) => {
         const previewItem = preview.children[i];
         const p = previewItem.querySelector('p');
-        p.textContent = `${(file.size / 1024).toFixed(2)} KB -> ${(compressedFile.size / 1024).toFixed(2)} KB`;
-    }
+        const progress = previewItem.querySelector('progress');
+
+        let compressedFile;
+        let compressedFileName;
+
+        console.log(`Compressing file: ${file.name}, type: ${file.type}`);
+        if (file.type.startsWith('image/')) {
+            console.log('Calling compressImage');
+            compressedFile = await compressImage(file);
+            compressedFileName = file.name.substring(0, file.name.lastIndexOf('.')) + '.jpg';
+        } else if (file.type.startsWith('video/')) {
+            console.log('Calling compressVideo');
+            progress.style.display = 'block';
+            compressedFile = await compressVideo(file, (p) => {
+                progress.value = p;
+            });
+            progress.style.display = 'none';
+            compressedFileName = file.name.substring(0, file.name.lastIndexOf('.')) + '.mp4';
+        }
+
+        if (compressedFile) {
+            zip.file(compressedFileName, compressedFile);
+            compressedFileCount++;
+            p.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB -> ${(compressedFile.size / 1024 / 1024).toFixed(2)} MB`;
+        }
+    });
+
+    await Promise.all(compressionPromises);
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
     downloadLink.href = url;
-    downloadLink.download = 'compressed_images.zip';
+    downloadLink.download = 'compressed_files.zip';
     downloadLink.style.display = 'block';
-    downloadLink.textContent = `Download ${compressedImages.length} compressed images`;
+    downloadLink.textContent = `Download ${compressedFileCount} compressed files`;
 
     compressBtn.disabled = false;
     compressBtn.textContent = 'Compress and Add to Zip';
@@ -74,3 +109,46 @@ async function compressImage(file) {
         return file; // return original file if compression fails
     }
 }
+
+const { FFmpeg } = self.FFmpeg;
+const { toBlobURL } = self.FFmpegUtil;
+let ffmpeg;
+
+const loadFFmpeg = async () => {
+    if (!ffmpeg) {
+        console.log('Loading ffmpeg...');
+        ffmpeg = new FFmpeg();
+        ffmpeg.on('log', ({ message }) => {
+            console.log(message);
+        });
+        const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd'
+        await ffmpeg.load({
+            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        });
+        console.log('ffmpeg loaded');
+    }
+};
+
+async function compressVideo(file, progressCallback) {
+    console.log(`Compressing video: ${file.name}`);
+    await loadFFmpeg();
+    console.log('ffmpeg is ready for video compression');
+
+    ffmpeg.on('progress', ({ progress }) => {
+        progressCallback(progress * 100);
+    });
+
+    const inputFileName = file.name;
+    const outputFileName = file.name.substring(0, file.name.lastIndexOf('.')) + '.mp4';
+
+    await ffmpeg.writeFile(inputFileName, new Uint8Array(await file.arrayBuffer()));
+
+    await ffmpeg.exec(['-i', inputFileName, '-c:v', 'libx264', '-crf', '28', outputFileName]);
+
+    const data = await ffmpeg.readFile(outputFileName);
+
+    return new Blob([new Uint8Array(data)], { type: 'video/mp4' });
+}
+
+loadFFmpeg().catch(err => console.error(err));

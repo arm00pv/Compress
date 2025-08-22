@@ -20,9 +20,13 @@ body {
     gap: 0.5rem;
 }
 
-img {
+img, video {
     max-width: 200px;
     max-height: 200px;
     border: 1px solid #ccc;
     border-radius: 5px;
+}
+
+progress {
+    width: 100%;
 }
